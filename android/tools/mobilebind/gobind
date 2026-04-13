@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+export GOOS="$(go env GOHOSTOS)"
+export GOARCH="$(go env GOHOSTARCH)"
+unset GOARM GO386 GOMIPS GOMIPS64
+
+exec go run golang.org/x/mobile/cmd/gobind "$@"

@@ -1,0 +1,3 @@
+[submodule "olcrtc"]
+	path = olcrtc
+	url = git@gh-igor:igormolchanov2000/olcrtc.git

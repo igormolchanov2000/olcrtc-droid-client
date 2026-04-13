@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">olcrtc</string>
+    <string name="room_id_label">Telemost room ID</string>
+    <string name="secret_key_label">Secret key</string>
+    <string name="connect_button">Connect</string>
+    <string name="disconnect_button">Disconnect</string>
+    <string name="notification_channel_name">olcrtc VPN</string>
+    <string name="notification_title">olcrtc tunnel is active</string>
+    <string name="vpn_session_name">olcrtc Android VPN</string>
+    <string name="vpn_permission_denied">VPN permission was denied</string>
+    <string name="vpn_permission_revoked">VPN permission was revoked by Android</string>
+    <string name="vpn_establish_failed">Unable to establish Android VPN interface</string>
+    <string name="invalid_config_message">Room ID and secret key are required before startup</string>
+    <string name="runtime_stopped_unexpectedly">olcrtc runtime stopped unexpectedly</string>
+    <string name="status_idle">Disconnected</string>
+    <string name="status_connecting">Connecting</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_stopping">Stopping</string>
+</resources>
