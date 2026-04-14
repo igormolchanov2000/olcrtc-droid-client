@@ -1,0 +1,11 @@
+# Copy this file to android/release-signing.properties and fill in your real values.
+# You can also provide the same values via environment variables:
+#   OLCRTC_RELEASE_STORE_FILE
+#   OLCRTC_RELEASE_STORE_PASSWORD
+#   OLCRTC_RELEASE_KEY_ALIAS
+#   OLCRTC_RELEASE_KEY_PASSWORD
+
+storeFile=keystore/olcrtc-release.jks
+storePassword=change-me
+keyAlias=olcrtc-release
+keyPassword=change-me

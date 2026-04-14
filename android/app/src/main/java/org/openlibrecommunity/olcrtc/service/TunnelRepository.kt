@@ -15,10 +15,11 @@ object TunnelRepository {
         _state.update {
             it.copy(
                 status = TunnelStatus.CONNECTING,
-                roomId = config.roomId,
-                message = "Connecting to ${config.roomId}",
+                provider = config.provider,
+                sessionId = config.sessionId,
+                message = "Connecting to ${config.provider.displayName}",
                 errorMessage = null,
-                logs = listOf("Preparing Android VPN service…"),
+                logs = listOf("Preparing Android VPN service for ${config.provider.displayName}…"),
             )
         }
     }
@@ -27,8 +28,9 @@ object TunnelRepository {
         _state.update {
             it.copy(
                 status = TunnelStatus.CONNECTED,
-                roomId = config.roomId,
-                message = "Connected to ${config.roomId}",
+                provider = config.provider,
+                sessionId = config.sessionId,
+                message = "Connected to ${config.provider.displayName}",
                 errorMessage = null,
             )
         }
@@ -57,7 +59,8 @@ object TunnelRepository {
         _state.update {
             it.copy(
                 status = TunnelStatus.ERROR,
-                roomId = config?.roomId ?: it.roomId,
+                provider = config?.provider ?: it.provider,
+                sessionId = config?.sessionId ?: it.sessionId,
                 message = message,
                 errorMessage = message,
             )

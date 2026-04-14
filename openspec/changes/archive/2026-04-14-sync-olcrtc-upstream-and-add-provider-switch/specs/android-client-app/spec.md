@@ -1,8 +1,5 @@
-# android-client-app Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-android-olcrtc-client. Update Purpose after archive.
-## Requirements
 ### Requirement: Android client collects tunnel credentials and validates them before startup
 The Android client SHALL provide a provider selector together with the provider-specific session identifier and secret key fields, and it SHALL reject startup until the selected provider has a complete, valid configuration accepted by `olcrtc/mobile`.
 
@@ -32,15 +29,3 @@ The Android client SHALL let the user start and stop an `olcrtc` session for the
 #### Scenario: User stops a running session
 - **WHEN** the user stops the tunnel while a provider session is active
 - **THEN** the app SHALL stop the foreground service, stop `olcrtc`, and return the UI to an idle state
-
-### Requirement: Android client exposes runtime status and logs
-The Android client SHALL display the current tunnel state and stream runtime log output produced by the embedded olcrtc runtime so the user can inspect connection progress and failures.
-
-#### Scenario: Connection progress is visible
-- **WHEN** the service changes state during startup, connection, or shutdown
-- **THEN** the app SHALL show the latest state to the user without requiring an app restart
-
-#### Scenario: Runtime failure is surfaced to the user
-- **WHEN** olcrtc startup or connection establishment fails
-- **THEN** the app SHALL show an error state and include recent log output that helps explain the failure
-

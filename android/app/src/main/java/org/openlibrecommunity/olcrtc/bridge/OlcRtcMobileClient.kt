@@ -29,10 +29,10 @@ class OlcRtcMobileClient {
     @Throws(Exception::class)
     fun start(config: TunnelConfig) {
         runtime.start(
-            config.roomId,
+            config.provider.runtimeId,
+            config.sessionId,
             config.secretKey,
             config.socksPort.toLong(),
-            config.duo,
             "",
             "",
         )

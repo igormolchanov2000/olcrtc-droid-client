@@ -9,14 +9,17 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import org.openlibrecommunity.olcrtc.service.TunnelConfig
+import org.openlibrecommunity.olcrtc.service.TunnelProvider
 import org.openlibrecommunity.olcrtc.service.TunnelRepository
 import org.openlibrecommunity.olcrtc.service.TunnelServiceState
 import org.openlibrecommunity.olcrtc.service.TunnelStatus
 
 data class MainUiState(
-    val roomId: String = "",
+    val provider: TunnelProvider = TunnelProvider.TELEMOST,
+    val sessionId: String = "",
     val secretKey: String = "",
-    val roomIdError: String? = null,
+    val providerNotice: String? = null,
+    val sessionIdError: String? = null,
     val secretKeyError: String? = null,
     val serviceState: TunnelServiceState = TunnelServiceState(),
     val canStart: Boolean = false,
@@ -24,15 +27,24 @@ data class MainUiState(
 )
 
 class MainViewModel : ViewModel() {
-    private val roomId = MutableStateFlow("")
+    private val provider = MutableStateFlow(TunnelProvider.TELEMOST)
+    private val sessionId = MutableStateFlow("")
     private val secretKey = MutableStateFlow("")
 
     val uiState: StateFlow<MainUiState> = combine(
-        roomId,
+        provider,
+        sessionId,
         secretKey,
         TunnelRepository.state,
-    ) { room, key, serviceState ->
-        val roomError = if (room.isBlank()) "Room ID is required" else null
+    ) { selectedProvider, session, key, serviceState ->
+        val providerNotice = when (selectedProvider) {
+            TunnelProvider.TELEMOST -> "Telemost is currently unavailable in the Android client"
+            TunnelProvider.SALUTE_JAZZ -> null
+        }
+        val sessionError = when {
+            session.isBlank() && selectedProvider == TunnelProvider.SALUTE_JAZZ -> "SaluteJazz room ID is required"
+            else -> null
+        }
         val keyError = when {
             key.isBlank() -> "Secret key is required"
             !hexKey.matches(key) -> "Secret key must be a 64-character hex string"
@@ -40,12 +52,14 @@ class MainViewModel : ViewModel() {
         }
 
         MainUiState(
-            roomId = room,
+            provider = selectedProvider,
+            sessionId = session,
             secretKey = key,
-            roomIdError = roomError,
+            providerNotice = providerNotice,
+            sessionIdError = sessionError,
             secretKeyError = keyError,
             serviceState = serviceState,
-            canStart = roomError == null && keyError == null && serviceState.status in setOf(TunnelStatus.IDLE, TunnelStatus.ERROR),
+            canStart = providerNotice == null && sessionError == null && keyError == null && serviceState.status in setOf(TunnelStatus.IDLE, TunnelStatus.ERROR),
             canStop = serviceState.status == TunnelStatus.CONNECTING || serviceState.status == TunnelStatus.CONNECTED,
         )
     }.stateIn(
@@ -54,8 +68,12 @@ class MainViewModel : ViewModel() {
         initialValue = MainUiState(),
     )
 
-    fun updateRoomId(value: String) {
-        roomId.update { value.trim() }
+    fun updateProvider(value: TunnelProvider) {
+        provider.update { value }
+    }
+
+    fun updateSessionId(value: String) {
+        sessionId.update { value.trim() }
     }
 
     fun updateSecretKey(value: String) {
@@ -69,7 +87,8 @@ class MainViewModel : ViewModel() {
         }
 
         return TunnelConfig(
-            roomId = state.roomId,
+            provider = state.provider,
+            sessionId = state.sessionId,
             secretKey = state.secretKey,
         )
     }

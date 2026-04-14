@@ -28,6 +28,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.openlibrecommunity.olcrtc.service.TunnelConfig
+import org.openlibrecommunity.olcrtc.service.TunnelProvider
 import org.openlibrecommunity.olcrtc.service.TunnelRepository
 import org.openlibrecommunity.olcrtc.service.TunnelServiceController
 import org.openlibrecommunity.olcrtc.service.TunnelStatus
@@ -76,7 +78,8 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     MainScreen(
                         state = uiState,
-                        onRoomIdChange = viewModel::updateRoomId,
+                        onProviderChange = viewModel::updateProvider,
+                        onSessionIdChange = viewModel::updateSessionId,
                         onSecretKeyChange = viewModel::updateSecretKey,
                         onStartClick = {
                             viewModel.validatedConfigOrNull()?.let(::requestVpnPermission)
@@ -107,7 +110,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MainScreen(
     state: MainUiState,
-    onRoomIdChange: (String) -> Unit,
+    onProviderChange: (TunnelProvider) -> Unit,
+    onSessionIdChange: (String) -> Unit,
     onSecretKeyChange: (String) -> Unit,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit,
@@ -133,7 +137,8 @@ private fun MainScreen(
             item {
                 ConfigCard(
                     state = state,
-                    onRoomIdChange = onRoomIdChange,
+                    onProviderChange = onProviderChange,
+                    onSessionIdChange = onSessionIdChange,
                     onSecretKeyChange = onSecretKeyChange,
                     onStartClick = onStartClick,
                     onStopClick = onStopClick,
@@ -168,6 +173,12 @@ private fun MainScreen(
 
 @Composable
 private fun StatusCard(state: MainUiState) {
+    val statusProvider = if (state.serviceState.status == TunnelStatus.IDLE) {
+        state.provider
+    } else {
+        state.serviceState.provider
+    }
+
     Card(
         colors = CardDefaults.cardColors(
             containerColor = when (state.serviceState.status) {
@@ -191,6 +202,21 @@ private fun StatusCard(state: MainUiState) {
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
             )
+            Text(
+                text = statusProvider.displayName,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val statusSessionId = if (state.serviceState.status == TunnelStatus.IDLE) {
+                state.sessionId
+            } else {
+                state.serviceState.sessionId
+            }
+            if (statusSessionId.isNotBlank()) {
+                Text(
+                    text = statusSessionId,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (state.serviceState.errorMessage != null) {
                 Text(
                     text = state.serviceState.errorMessage,
@@ -204,11 +230,21 @@ private fun StatusCard(state: MainUiState) {
 @Composable
 private fun ConfigCard(
     state: MainUiState,
-    onRoomIdChange: (String) -> Unit,
+    onProviderChange: (TunnelProvider) -> Unit,
+    onSessionIdChange: (String) -> Unit,
     onSecretKeyChange: (String) -> Unit,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit,
 ) {
+    val sessionLabel = when (state.provider) {
+        TunnelProvider.TELEMOST -> stringResourceCompat(R.string.room_id_label)
+        TunnelProvider.SALUTE_JAZZ -> stringResourceCompat(R.string.salutejazz_session_label)
+    }
+    val sessionHint = when (state.provider) {
+        TunnelProvider.TELEMOST -> stringResourceCompat(R.string.telemost_session_hint)
+        TunnelProvider.SALUTE_JAZZ -> stringResourceCompat(R.string.salutejazz_session_hint)
+    }
+
     Card {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -219,15 +255,46 @@ private fun ConfigCard(
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
-            OutlinedTextField(
-                value = state.roomId,
-                onValueChange = onRoomIdChange,
+            Text(
+                text = stringResourceCompat(R.string.provider_label),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+            )
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text(text = stringResourceCompat(R.string.room_id_label)) },
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                TunnelProvider.values().forEach { provider ->
+                    FilterChip(
+                        selected = state.provider == provider,
+                        onClick = { onProviderChange(provider) },
+                        label = { Text(text = provider.displayName) },
+                    )
+                }
+            }
+            if (state.providerNotice != null) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
+                ) {
+                    Text(
+                        text = state.providerNotice,
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = state.sessionId,
+                onValueChange = onSessionIdChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(text = sessionLabel) },
                 supportingText = {
-                    state.roomIdError?.let { Text(text = it) }
+                    Text(text = state.sessionIdError ?: sessionHint)
                 },
-                isError = state.roomIdError != null,
+                isError = state.sessionIdError != null,
+                enabled = state.provider == TunnelProvider.SALUTE_JAZZ,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
@@ -243,6 +310,7 @@ private fun ConfigCard(
                     state.secretKeyError?.let { Text(text = it) }
                 },
                 isError = state.secretKeyError != null,
+                enabled = state.provider == TunnelProvider.SALUTE_JAZZ,
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(

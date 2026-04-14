@@ -1,8 +1,30 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val releaseSigningProperties = Properties().apply {
+    val propertiesFile = rootProject.file("release-signing.properties")
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+
+fun signingValue(propertyName: String, envName: String): String? {
+    return releaseSigningProperties.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(envName)?.takeIf { it.isNotBlank() }
+}
+
+val releaseStoreFilePath = signingValue("storeFile", "OLCRTC_RELEASE_STORE_FILE")
+val releaseStoreFile = releaseStoreFilePath?.let { rootProject.file(it) }
+val releaseStorePassword = signingValue("storePassword", "OLCRTC_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = signingValue("keyAlias", "OLCRTC_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = signingValue("keyPassword", "OLCRTC_RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { !it.isNullOrBlank() }
+    && releaseStoreFile?.exists() == true
 
 val buildMobileBindings = tasks.register<Exec>("buildMobileBindings") {
     workingDir(rootProject.projectDir)
@@ -31,6 +53,17 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -38,6 +71,17 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "../proguard-rules.pro"
             )
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+
+        create("releaseForTesting") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = true
+            versionNameSuffix = "-testing"
         }
     }
 

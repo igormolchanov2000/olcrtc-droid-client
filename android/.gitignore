@@ -8,3 +8,6 @@ local.properties
 app/libs/*.aar
 app/src/main/jniLibs/*
 !app/src/main/jniLibs/.gitkeep
+release-signing.properties
+keystore/*
+!keystore/.gitkeep
