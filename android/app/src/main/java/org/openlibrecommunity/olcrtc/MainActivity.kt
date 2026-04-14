@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,14 +20,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,6 +54,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.openlibrecommunity.olcrtc.routing.InstalledAppInfo
+import org.openlibrecommunity.olcrtc.routing.RoutingMode
 import org.openlibrecommunity.olcrtc.service.TunnelConfig
 import org.openlibrecommunity.olcrtc.service.TunnelProvider
 import org.openlibrecommunity.olcrtc.service.TunnelRepository
@@ -87,6 +96,23 @@ class MainActivity : ComponentActivity() {
                         onStopClick = {
                             TunnelServiceController.stop(this)
                         },
+                        onOpenRouting = {
+                            if (uiState.routingSettings.onboardingCompleted) {
+                                viewModel.openRoutingSettings()
+                            } else {
+                                viewModel.openOnboardingEditor()
+                            }
+                        },
+                        onAcceptRecommendedRouting = viewModel::acceptRecommendedRouting,
+                        onEditRecommendedRouting = viewModel::openOnboardingEditor,
+                        onChooseAllTrafficRouting = viewModel::chooseAllTrafficRouting,
+                        onDismissRoutingEditor = viewModel::closeRoutingSettings,
+                        onDraftRoutingModeChange = viewModel::updateDraftRoutingMode,
+                        onOpenAppPicker = viewModel::openAppPicker,
+                        onDismissAppPicker = viewModel::closeAppPicker,
+                        onAppSearchQueryChange = viewModel::updateAppSearchQuery,
+                        onToggleDraftPackage = viewModel::toggleDraftPackage,
+                        onSaveRouting = viewModel::saveRoutingSettings,
                     )
                 }
             }
@@ -115,6 +141,17 @@ private fun MainScreen(
     onSecretKeyChange: (String) -> Unit,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit,
+    onOpenRouting: () -> Unit,
+    onAcceptRecommendedRouting: () -> Unit,
+    onEditRecommendedRouting: () -> Unit,
+    onChooseAllTrafficRouting: () -> Unit,
+    onDismissRoutingEditor: () -> Unit,
+    onDraftRoutingModeChange: (RoutingMode) -> Unit,
+    onOpenAppPicker: () -> Unit,
+    onDismissAppPicker: () -> Unit,
+    onAppSearchQueryChange: (String) -> Unit,
+    onToggleDraftPackage: (String) -> Unit,
+    onSaveRouting: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -132,6 +169,13 @@ private fun MainScreen(
         ) {
             item {
                 StatusCard(state = state)
+            }
+
+            item {
+                RoutingCard(
+                    state = state,
+                    onOpenRouting = onOpenRouting,
+                )
             }
 
             item {
@@ -153,7 +197,7 @@ private fun MainScreen(
                 item {
                     Card {
                         Text(
-                            text = "Logs will appear here after the service starts.",
+                            text = stringResourceCompat(R.string.logs_empty_message),
                             modifier = Modifier.padding(16.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -168,6 +212,34 @@ private fun MainScreen(
                 }
             }
         }
+    }
+
+    if (state.isRoutingOnboardingVisible) {
+        RoutingOnboardingDialog(
+            state = state,
+            onAcceptRecommendedRouting = onAcceptRecommendedRouting,
+            onEditRecommendedRouting = onEditRecommendedRouting,
+            onChooseAllTrafficRouting = onChooseAllTrafficRouting,
+        )
+    }
+
+    if (state.isRoutingEditorVisible) {
+        RoutingSettingsDialog(
+            state = state,
+            onDismiss = onDismissRoutingEditor,
+            onDraftRoutingModeChange = onDraftRoutingModeChange,
+            onOpenAppPicker = onOpenAppPicker,
+            onSaveRouting = onSaveRouting,
+        )
+    }
+
+    if (state.isAppPickerVisible) {
+        AppPickerDialog(
+            state = state,
+            onDismiss = onDismissAppPicker,
+            onSearchQueryChange = onAppSearchQueryChange,
+            onTogglePackage = onToggleDraftPackage,
+        )
     }
 }
 
@@ -206,14 +278,9 @@ private fun StatusCard(state: MainUiState) {
                 text = statusProvider.displayName,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            val statusSessionId = if (state.serviceState.status == TunnelStatus.IDLE) {
-                state.sessionId
-            } else {
-                state.serviceState.sessionId
-            }
-            if (statusSessionId.isNotBlank()) {
+            if (state.serviceState.sessionId.isNotBlank()) {
                 Text(
-                    text = statusSessionId,
+                    text = state.serviceState.sessionId,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -222,6 +289,42 @@ private fun StatusCard(state: MainUiState) {
                     text = state.serviceState.errorMessage,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoutingCard(
+    state: MainUiState,
+    onOpenRouting: () -> Unit,
+) {
+    Card {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResourceCompat(R.string.routing_card_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(text = state.routingSummary)
+            if (state.routingValidationError != null) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
+                ) {
+                    Text(
+                        text = state.routingValidationError,
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+            Button(onClick = onOpenRouting) {
+                Text(text = stringResourceCompat(R.string.routing_change_button))
             }
         }
     }
@@ -251,7 +354,7 @@ private fun ConfigCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "Tunnel configuration",
+                text = stringResourceCompat(R.string.tunnel_configuration_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -342,6 +445,266 @@ private fun ConfigCard(
 }
 
 @Composable
+private fun RoutingOnboardingDialog(
+    state: MainUiState,
+    onAcceptRecommendedRouting: () -> Unit,
+    onEditRecommendedRouting: () -> Unit,
+    onChooseAllTrafficRouting: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = {
+            Text(text = stringResourceCompat(R.string.routing_setup_title))
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(text = stringResourceCompat(R.string.routing_setup_message))
+                if (state.onboardingState.isLoadingRecommendations) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                        Text(text = stringResourceCompat(R.string.routing_setup_loading))
+                    }
+                } else {
+                    Text(
+                        text = stringResourceCompat(
+                            R.string.routing_setup_recommended_ready,
+                            state.onboardingState.recommendedPackages.size,
+                        ),
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onAcceptRecommendedRouting,
+                enabled = !state.onboardingState.isLoadingRecommendations && state.onboardingState.recommendedPackages.isNotEmpty(),
+            ) {
+                Text(text = stringResourceCompat(R.string.routing_accept_recommended_button))
+            }
+        },
+        dismissButton = {
+            Column(horizontalAlignment = Alignment.End) {
+                TextButton(
+                    onClick = onEditRecommendedRouting,
+                    enabled = !state.onboardingState.isLoadingRecommendations,
+                ) {
+                    Text(text = stringResourceCompat(R.string.routing_edit_recommended_button))
+                }
+                TextButton(
+                    onClick = onChooseAllTrafficRouting,
+                    enabled = !state.onboardingState.isLoadingRecommendations,
+                ) {
+                    Text(text = stringResourceCompat(R.string.routing_choose_all_traffic_button))
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun RoutingSettingsDialog(
+    state: MainUiState,
+    onDismiss: () -> Unit,
+    onDraftRoutingModeChange: (RoutingMode) -> Unit,
+    onOpenAppPicker: () -> Unit,
+    onSaveRouting: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = state.routingDialogTitle)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                FilterChipRow(
+                    selectedMode = state.routingDraftMode,
+                    onModeSelected = onDraftRoutingModeChange,
+                )
+                Text(
+                    text = state.routingDraftSummary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (state.routingDraftMode == RoutingMode.SELECTED_APPS) {
+                    Text(
+                        text = stringResourceCompat(
+                            R.string.routing_selected_apps_count,
+                            state.routingDraftSelectedPackages.size,
+                        ),
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Button(onClick = onOpenAppPicker) {
+                        Text(text = stringResourceCompat(R.string.routing_edit_apps_button))
+                    }
+                }
+                if (state.routingDraftValidationError != null) {
+                    Text(
+                        text = state.routingDraftValidationError,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onSaveRouting,
+                enabled = state.routingDraftValidationError == null,
+            ) {
+                Text(text = state.routingDialogConfirmLabel)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResourceCompat(R.string.cancel_button))
+            }
+        },
+    )
+}
+
+@Composable
+private fun FilterChipRow(
+    selectedMode: RoutingMode,
+    onModeSelected: (RoutingMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        FilterChip(
+            selected = selectedMode == RoutingMode.SELECTED_APPS,
+            onClick = { onModeSelected(RoutingMode.SELECTED_APPS) },
+            label = { Text(text = stringResourceCompat(R.string.routing_mode_selected_apps)) },
+        )
+        FilterChip(
+            selected = selectedMode == RoutingMode.ALL_TRAFFIC,
+            onClick = { onModeSelected(RoutingMode.ALL_TRAFFIC) },
+            label = { Text(text = stringResourceCompat(R.string.routing_mode_all_traffic)) },
+        )
+    }
+}
+
+@Composable
+private fun AppPickerDialog(
+    state: MainUiState,
+    onDismiss: () -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onTogglePackage: (String) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = stringResourceCompat(R.string.app_picker_title))
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = state.appSearchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(text = stringResourceCompat(R.string.app_picker_search_label)) },
+                )
+                if (state.isLoadingInstalledApps) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else if (state.installedApps.isEmpty()) {
+                    Text(text = stringResourceCompat(R.string.app_picker_empty_message))
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(
+                            items = state.installedApps,
+                            key = { it.packageName },
+                        ) { app ->
+                            AppPickerRow(
+                                app = app,
+                                selected = state.routingDraftSelectedPackages.contains(app.packageName),
+                                recommended = state.onboardingState.recommendedPackages.contains(app.packageName),
+                                onToggle = { onTogglePackage(app.packageName) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResourceCompat(R.string.done_button))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResourceCompat(R.string.cancel_button))
+            }
+        },
+    )
+}
+
+@Composable
+private fun AppPickerRow(
+    app: InstalledAppInfo,
+    selected: Boolean,
+    recommended: Boolean,
+    onToggle: () -> Unit,
+) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = { onToggle() },
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = app.label,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    if (recommended) {
+                        Text(
+                            text = stringResourceCompat(R.string.routing_recommended_badge),
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+                Text(
+                    text = app.packageName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun LogsHeader(logCount: Int) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -349,7 +712,7 @@ private fun LogsHeader(logCount: Int) {
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "Runtime logs",
+            text = stringResourceCompat(R.string.runtime_logs_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
@@ -380,6 +743,6 @@ private fun LogLine(line: String) {
 }
 
 @Composable
-private fun stringResourceCompat(id: Int): String {
-    return androidx.compose.ui.res.stringResource(id)
+private fun stringResourceCompat(id: Int, vararg formatArgs: Any): String {
+    return androidx.compose.ui.res.stringResource(id, *formatArgs)
 }

@@ -1,5 +1,7 @@
 package org.openlibrecommunity.olcrtc.service
 
+import org.openlibrecommunity.olcrtc.routing.RoutingMode
+
 enum class TunnelProvider(
     val runtimeId: String,
     val displayName: String,
@@ -31,6 +33,8 @@ data class TunnelConfig(
     val sessionId: String,
     val secretKey: String,
     val socksPort: Int = 10808,
+    val routingMode: RoutingMode = RoutingMode.ALL_TRAFFIC,
+    val selectedPackages: Set<String> = emptySet(),
 )
 
 enum class TunnelStatus {

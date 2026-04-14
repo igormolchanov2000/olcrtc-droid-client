@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
@@ -27,6 +28,7 @@ import org.openlibrecommunity.olcrtc.BuildConfig
 import org.openlibrecommunity.olcrtc.MainActivity
 import org.openlibrecommunity.olcrtc.R
 import org.openlibrecommunity.olcrtc.bridge.OlcRtcMobileClient
+import org.openlibrecommunity.olcrtc.routing.RoutingMode
 import org.openlibrecommunity.olcrtc.tunnel.Tun2SocksNative
 import java.io.File
 
@@ -105,9 +107,10 @@ class OlcRtcVpnService : VpnService() {
     private suspend fun connect(config: TunnelConfig) {
         activeConfig = config
         TunnelRepository.setConnecting(config)
+        TunnelRepository.appendLog("Routing mode: ${describeRouting(config)}")
         startForeground(notificationId, buildNotification(getString(R.string.status_connecting)))
 
-        tunInterface = establishTunnelInterface()
+        tunInterface = establishTunnelInterface(config)
             ?: error(getString(R.string.vpn_establish_failed))
 
         val client = OlcRtcMobileClient().also { mobileClient = it }
@@ -130,7 +133,7 @@ class OlcRtcVpnService : VpnService() {
         monitorJob = launchRuntimeMonitor(config)
     }
 
-    private fun establishTunnelInterface(): ParcelFileDescriptor? {
+    private fun establishTunnelInterface(config: TunnelConfig): ParcelFileDescriptor? {
         val builder = Builder()
             .setSession(getString(R.string.vpn_session_name))
             .setMtu(vpnMtu)
@@ -139,11 +142,45 @@ class OlcRtcVpnService : VpnService() {
             .addDnsServer("1.1.1.1")
             .addDnsServer("8.8.8.8")
 
+        configureApplicationRouting(builder, config)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setMetered(false)
         }
 
         return builder.establish()
+    }
+
+    private fun configureApplicationRouting(builder: Builder, config: TunnelConfig) {
+        val selfPackage = BuildConfig.APPLICATION_ID
+        when (config.routingMode) {
+            RoutingMode.ALL_TRAFFIC -> {
+                try {
+                    builder.addDisallowedApplication(selfPackage)
+                } catch (error: PackageManager.NameNotFoundException) {
+                    Log.w(logTag, "Unable to disallow self package for all-traffic mode", error)
+                }
+            }
+
+            RoutingMode.SELECTED_APPS -> {
+                val allowedPackages = config.selectedPackages
+                    .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+                    .filterNot { it == selfPackage }
+                    .distinct()
+
+                require(allowedPackages.isNotEmpty()) {
+                    getString(R.string.routing_selection_required_message)
+                }
+
+                allowedPackages.forEach { packageName ->
+                    try {
+                        builder.addAllowedApplication(packageName)
+                    } catch (error: PackageManager.NameNotFoundException) {
+                        Log.w(logTag, "Skipping unknown selected package: $packageName", error)
+                    }
+                }
+            }
+        }
     }
 
     private fun startTun2Socks(config: TunnelConfig) {
@@ -247,6 +284,13 @@ class OlcRtcVpnService : VpnService() {
             NotificationManager.IMPORTANCE_LOW,
         )
         manager.createNotificationChannel(channel)
+    }
+
+    private fun describeRouting(config: TunnelConfig): String {
+        return when (config.routingMode) {
+            RoutingMode.ALL_TRAFFIC -> "all traffic"
+            RoutingMode.SELECTED_APPS -> "${config.selectedPackages.size} selected apps"
+        }
     }
 
     companion object {
